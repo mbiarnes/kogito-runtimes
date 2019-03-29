@@ -8,3 +8,10 @@ to build the modules
 * drools
 * jbpm
 * kie-maven-plugin
+
+a test a test a test
+
+a test a test a test
+
+
+test test test
