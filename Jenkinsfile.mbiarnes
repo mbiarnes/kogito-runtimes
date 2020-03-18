@@ -1,0 +1,47 @@
+@Library('jenkins-pipeline-shared-libraries')_
+
+pipeline {
+    agent {
+        label 'kie-rhel7-priority'
+    }
+    tools {
+        maven 'kie-maven-3.6.2'
+        jdk 'kie-jdk1.8'
+    }
+    options {
+        buildDiscarder logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '', daysToKeepStr: '', numToKeepStr: '10')
+        timeout(time: 90, unit: 'MINUTES')
+    }
+    environment {
+        SONARCLOUD_TOKEN = credentials('SONARCLOUD_TOKEN')
+        MAVEN_OPTS = '-Xms512m -Xmx3g'
+    }
+    stages {
+        stage('Initialize') {
+            steps {
+                sh 'printenv'
+            }
+        }
+        stage('Build kogito-runtimes') {
+            steps {
+                script {
+                    maven.runMavenWithSubmarineSettings('clean install -Prun-code-coverage', false)
+                    /*
+                       The analysis must happen before the other stages as these clone different projects into a root
+                       directory of kogito-runtimes and are by mistake incorporated in a test coverage report.
+                     */
+                    maven.runMavenWithSubmarineSettings('-e -nsu validate -Psonarcloud-analysis', false)
+                }
+            }
+        }
+    }
+    post {
+        always {
+            script {
+                mailer.sendEmailWithLog()
+            }
+            junit '**/target/surefire-reports/**/*.xml'
+            cleanWs()
+        }
+    }
+}

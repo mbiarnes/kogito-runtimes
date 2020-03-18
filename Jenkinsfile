@@ -2,10 +2,10 @@
 
 pipeline {
     agent {
-        label 'kie-rhel7 && kie-mem16g'
+        label 'image-test'
     }
     tools {
-        maven 'kie-maven-3.6.0'
+        maven 'kie-maven-3.6.2'
         jdk 'kie-jdk1.8'
     }
     options {
