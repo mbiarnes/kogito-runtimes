@@ -9,7 +9,7 @@ pipeline {
         jdk 'kie-jdk1.8'
     }
     options {
-        buildDiscarder logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '', daysToKeepStr: '', numToKeepStr: '10')
+        buildDiscarder logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '', daysToKeepStr: '', numToKeepStr: '5')
         timeout(time: 90, unit: 'MINUTES')
     }
     environment {
@@ -22,25 +22,59 @@ pipeline {
                 sh 'printenv'
             }
         }
-        stage('Build kogito-runtimes') {
+        stage('CleanWorkspace') {
+            steps {
+                cleanWs()
+            }
+        }
+        stage('build sh script') {
             steps {
                 script {
-                    maven.runMavenWithSubmarineSettings('clean install -Prun-code-coverage', false)
-                    /*
-                       The analysis must happen before the other stages as these clone different projects into a root
-                       directory of kogito-runtimes and are by mistake incorporated in a test coverage report.
-                     */
-                    maven.runMavenWithSubmarineSettings('-e -nsu validate -Psonarcloud-analysis', false)
+                    mailer.buildLogScriptPR()
+                }
+            }
+        }
+        stage('Checkout droolsjbpm-build-bootstrap') {
+            steps {
+                checkout([$class: 'GitSCM', branches: [[name: 'reducedReps']], browser: [$class: 'GithubWeb', repoUrl: 'git@github.com:mbiarnes/lienzo-core.git'], doGenerateSubmoduleConfigurations: false, extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'lienzo-core']], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'kie-ci-user-key', url: 'git@github.com:mbiarnes/lienzo-core.git']]])
+                checkout([$class: 'GitSCM', branches: [[name: 'reducedReps']], browser: [$class: 'GithubWeb', repoUrl: 'git@github.com:mbiarnes/lienzo-tests.git'], doGenerateSubmoduleConfigurations: false, extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'lienzo-tests']], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'kie-ci-user-key', url: 'git@github.com:mbiarnes/lienzo-tests.git']]])
+                checkout([$class: 'GitSCM', branches: [[name: 'reducedReps']], browser: [$class: 'GithubWeb', repoUrl: 'git@github.com:mbiarnes/droolsjbpm-build-bootstrap.git'], doGenerateSubmoduleConfigurations: false, extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'droolsjbpm-build-bootstrap']], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'kie-ci-user-key', url: 'git@github.com:mbiarnes/droolsjbpm-build-bootstrap.git']]])
+                checkout([$class: 'GitSCM', branches: [[name: 'reducedReps']], browser: [$class: 'GithubWeb', repoUrl: 'git@github.com:mbiarnes/kie-soup.git'], doGenerateSubmoduleConfigurations: false, extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'kie-soup']], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'kie-ci-user-key', url: 'git@github.com:mbiarnes/kie-soup.git']]])
+            }
+        }
+        /* mvn clean deploy of each repository to a locally directory that will be uploaded later on - this saves time */
+        stage('Build & deploy repositories locally'){
+            steps {
+                configFileProvider([configFile(fileId: '771ff52a-a8b4-40e6-9b22-d54c7314aa1e', targetLocation: 'jenkins-settings.xml', variable: 'SETTINGS_XML_FILE')]) {
+                    sh './droolsjbpm-build-bootstrap/script/release/05a_communityDeployLocally.sh $SETTINGS_XML_FILE'
                 }
             }
         }
     }
     post {
         always {
-            script {
-                mailer.sendEmailWithLog()
-            }
+            sh '$WORKSPACE/trace.sh'
             junit '**/target/surefire-reports/**/*.xml'
+        }
+        failure {
+            script {
+                mailer.sendEmail_failedPR()
+            }
+            //cleanWs()
+        }
+        unstable {
+            script {
+                mailer.sendEmail_unstablePR()
+            }
+            //cleanWs()
+        }
+        fixed {
+            script {
+                mailer.sendEmail_fixedPR()
+            }
+            //cleanWs()
+        }
+        success {
             cleanWs()
         }
     }

@@ -1,0 +1,74 @@
+@Library('jenkins-pipeline-shared-libraries')_
+
+pipeline {
+    agent {
+        label 'gabriele-static'
+    }
+    tools {
+        maven 'kie-maven-3.6.2'
+        jdk 'kie-jdk1.8'
+    }
+    options {
+        buildDiscarder logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '', daysToKeepStr: '', numToKeepStr: '5')
+        timeout(time: 90, unit: 'MINUTES')
+    }
+    stages {
+        stage('Initialize') {
+            steps {
+                sh 'printenv'
+            }
+        }
+        stage('CleanWorkspace') {
+            steps {
+                cleanWs()
+            }
+        }
+        stage('build sh script') {
+            steps {
+                script {
+                    sh 'touch trace.sh'
+                    sh 'chmod 755 trace.sh'
+                    sh 'echo "wget --no-check-certificate ${BUILD_URL}consoleText" >> trace.sh'
+                    sh 'echo "tail -n 750 consoleText >> error.log" >> trace.sh'
+                    sh 'echo "gzip error.log" >> trace.sh'
+                    sh 'cat trace.sh'
+                }
+            }
+        }
+        stage('Hello World'){
+            steps {
+                sh 'echo "Hello World"'
+            }
+        }
+        stage('List directory'){
+            steps {
+                sh 'ls -al'
+            }
+        }
+    }
+    post {
+        always {
+            sh '$WORKSPACE/trace.sh'
+        }
+        failure {
+            script {
+                mailer.sendEmail_failedPR()
+            }
+        }
+        unstable {
+            script {
+                mailer.sendEmail_unstablePR()
+            }
+        }
+        fixed {
+            script {
+                mailer.sendEmail_fixedPR()
+            }
+        }
+        success {
+            script {
+                mailer.sendEmail_successPR()
+            }
+        }
+    }
+}
